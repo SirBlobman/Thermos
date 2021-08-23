@@ -245,7 +245,7 @@
 +
 +            // If the packet contains movement information then we update the To location with the correct XYZ.
 +            if (p_147347_1_.field_149480_h && !(p_147347_1_.field_149480_h && p_147347_1_.field_149477_b == -999.0D && p_147347_1_.field_149475_d == -999.0D))
-+            {
+             {
 +                to.setX(p_147347_1_.field_149479_a);
 +                to.setY(p_147347_1_.field_149477_b);
 +                to.setZ(p_147347_1_.field_149478_c);
@@ -305,7 +305,7 @@
 +            }
 +
 +            if (this.hasMoved && !this.playerEntity.isDead)
-             {
++            {
 +                // CraftBukkit end
                  double d1;
                  double d2;
@@ -717,7 +717,11 @@
 +                this.sendPacket(new S02PacketChat(chatcomponenttranslation));
 +            }
 +            else if (true)
-+            {
+             {
+-                ChatComponentTranslation chatcomponenttranslation1 = new ChatComponentTranslation("chat.type.text", new Object[] {this.playerEntity.func_145748_c_(), ForgeHooks.newChatWithLinks(s)}); // Fixes chat links
+-                chatcomponenttranslation1 = ForgeHooks.onServerChatEvent(this, s, chatcomponenttranslation1);
+-                if (chatcomponenttranslation1 == null) return;
+-                this.serverController.getConfigurationManager().sendChatMsgImpl(chatcomponenttranslation1, false);
 +            	String[] bits = s.split(" ");
 +            	
 +            	HashSet<String> possibilities = new HashSet<String>(); // No duplicates allowed
@@ -748,16 +752,13 @@
 +            	
 +                this.chat(s, true);
 +                // CraftBukkit end - the below is for reference. :)
-+            }
-+
+             }
+ 
+-            this.chatSpamThresholdCount += 20;
 +            // CraftBukkit start - replaced with thread safe throttle
 +            // this.chatSpamThresholdCount += 20;
 +            if (chatSpamField.addAndGet(this, 20) > 200 && !this.serverController.getConfigurationManager().func_152596_g(this.playerEntity.getGameProfile()))
-             {
--                ChatComponentTranslation chatcomponenttranslation1 = new ChatComponentTranslation("chat.type.text", new Object[] {this.playerEntity.func_145748_c_(), ForgeHooks.newChatWithLinks(s)}); // Fixes chat links
--                chatcomponenttranslation1 = ForgeHooks.onServerChatEvent(this, s, chatcomponenttranslation1);
--                if (chatcomponenttranslation1 == null) return;
--                this.serverController.getConfigurationManager().sendChatMsgImpl(chatcomponenttranslation1, false);
++            {
 +                if (p_147354_1_.hasPriority())
 +                {
 +                    Waitable waitable = new Waitable() {
@@ -787,13 +788,13 @@
 +                {
 +                    this.kickPlayerFromServer("disconnect.spam");
 +                }
-+
+ 
+-            if (this.chatSpamThresholdCount > 200 && !this.serverController.getConfigurationManager().func_152596_g(this.playerEntity.getGameProfile()))
 +                // CraftBukkit end
-             }
++            }
 +        }
 +    }
- 
--            this.chatSpamThresholdCount += 20;
++
 +    // CraftBukkit start
 +    public void chat(String s, boolean async)
 +    {
@@ -801,8 +802,7 @@
 +        {
 +            return;
 +        }
- 
--            if (this.chatSpamThresholdCount > 200 && !this.serverController.getConfigurationManager().func_152596_g(this.playerEntity.getGameProfile()))
++
 +        if (!async && s.startsWith("/"))
 +        {
 +            this.handleSlashCommand(s);
@@ -1188,42 +1188,27 @@
                  }
              }
          }
-@@ -829,12 +1626,24 @@
-         this.playerEntity.func_143004_u();
-         C16PacketClientStatus.EnumState enumstate = p_147342_1_.func_149435_c();
-         
-+        final boolean isDead = this.playerEntity.getHealth() <= 0.0F;
-         switch (NetHandlerPlayServer.SwitchEnumState.field_151290_a[enumstate.ordinal()])
-         {
+@@ -834,7 +1631,8 @@
              case 1:
                  if (this.playerEntity.playerConqueredTheEnd)
                  {
 -                    this.playerEntity = this.serverController.getConfigurationManager().respawnPlayer(this.playerEntity, 0, true);
-+                // Cauldron start
-+                if (this.playerEntity.dimension == 1) // coming from end
-+                {
-+                    // We really should be calling transferPlayerToDimension since the player is coming in contact with a portal.
-+                    this.serverController.getConfigurationManager().respawnPlayer(this.playerEntity, 0, true, null, isDead); // set flag to indicate player is leaving end.
-+                }
-+                else
-+                // not coming from end
-+                {
-+                	this.playerEntity = this.serverController.getConfigurationManager().respawnPlayer(this.playerEntity, 0, false, null, isDead);
-+                }
-+                // Cauldron end
++                    this.playerEntity = this.serverController.getConfigurationManager()
++                    		.respawnPlayer(this.playerEntity, 0, true, null, false);
                  }
                  else if (this.playerEntity.getServerForPlayer().getWorldInfo().isHardcoreModeEnabled())
                  {
-@@ -857,7 +1666,7 @@
+@@ -857,7 +1655,8 @@
                          return;
                      }
  
 -                    this.playerEntity = this.serverController.getConfigurationManager().respawnPlayer(this.playerEntity, playerEntity.dimension, false);
-+                    this.playerEntity = this.serverController.getConfigurationManager().respawnPlayer(this.playerEntity, playerEntity.dimension, false, null, isDead);
++                    this.playerEntity = this.serverController.getConfigurationManager()
++                    		.respawnPlayer(this.playerEntity, playerEntity.dimension, false, null, this.playerEntity.isDead);
                  }
  
                  break;
-@@ -871,16 +1680,460 @@
+@@ -871,16 +1670,460 @@
  
      public void processCloseWindow(C0DPacketCloseWindow p_147356_1_)
      {
@@ -1685,7 +1670,7 @@
  
              if (ItemStack.areItemStacksEqual(p_147351_1_.func_149546_g(), itemstack))
              {
-@@ -903,6 +2156,12 @@
+@@ -903,6 +2146,12 @@
                  }
  
                  this.playerEntity.sendContainerAndContentsToPlayer(this.playerEntity.openContainer, arraylist);
@@ -1698,7 +1683,7 @@
              }
          }
      }
-@@ -925,8 +2184,60 @@
+@@ -925,8 +2174,60 @@
              boolean flag = p_147344_1_.func_149627_c() < 0;
              ItemStack itemstack = p_147344_1_.func_149625_d();
              boolean flag1 = p_147344_1_.func_149627_c() >= 1 && p_147344_1_.func_149627_c() < 36 + InventoryPlayer.getHotbarSize();
@@ -1760,7 +1745,7 @@
  
              if (flag1 && flag2 && flag3)
              {
-@@ -956,6 +2267,11 @@
+@@ -956,6 +2257,11 @@
  
      public void processConfirmTransaction(C0FPacketConfirmTransaction p_147339_1_)
      {
@@ -1772,7 +1757,7 @@
          Short oshort = (Short)this.field_147372_n.lookup(this.playerEntity.openContainer.windowId);
  
          if (oshort != null && p_147339_1_.func_149533_d() == oshort.shortValue() && this.playerEntity.openContainer.windowId == p_147339_1_.func_149532_c() && !this.playerEntity.openContainer.isPlayerNotUsingContainer(this.playerEntity))
-@@ -966,6 +2282,11 @@
+@@ -966,6 +2272,11 @@
  
      public void processUpdateSign(C12PacketUpdateSign p_147343_1_)
      {
@@ -1784,7 +1769,7 @@
          this.playerEntity.func_143004_u();
          WorldServer worldserver = this.serverController.worldServerForDimension(this.playerEntity.dimension);
  
-@@ -980,6 +2301,7 @@
+@@ -980,6 +2291,7 @@
                  if (!tileentitysign.func_145914_a() || tileentitysign.func_145911_b() != this.playerEntity)
                  {
                      this.serverController.logWarning("Player " + this.playerEntity.getCommandSenderName() + " just tried to change non-editable sign");
@@ -1792,7 +1777,7 @@
                      return;
                  }
              }
-@@ -990,6 +2312,7 @@
+@@ -990,6 +2302,7 @@
              for (j = 0; j < 4; ++j)
              {
                  boolean flag = true;
@@ -1800,7 +1785,7 @@
  
                  if (p_147343_1_.func_149589_f()[j].length() > 15)
                  {
-@@ -1018,7 +2341,29 @@
+@@ -1018,7 +2331,29 @@
                  int k = p_147343_1_.func_149586_d();
                  i = p_147343_1_.func_149585_e();
                  TileEntitySign tileentitysign1 = (TileEntitySign)tileentity;
@@ -1831,7 +1816,7 @@
                  tileentitysign1.markDirty();
                  worldserver.markBlockForUpdate(j, k, i);
              }
-@@ -1041,7 +2386,22 @@
+@@ -1041,7 +2376,22 @@
  
      public void processPlayerAbilities(C13PacketPlayerAbilities p_147348_1_)
      {
@@ -1855,7 +1840,7 @@
      }
  
      public void processTabComplete(C14PacketTabComplete p_147341_1_)
-@@ -1066,8 +2426,9 @@
+@@ -1066,8 +2416,9 @@
      public void processVanilla250Packet(C17PacketCustomPayload p_147349_1_)
      {
          PacketBuffer packetbuffer;
@@ -1867,7 +1852,7 @@
  
          if ("MC|BEdit".equals(p_147349_1_.func_149559_c()))
          {
-@@ -1075,25 +2436,25 @@
+@@ -1075,25 +2426,25 @@
  
              try
              {
@@ -1900,7 +1885,7 @@
                      }
  
                      return;
-@@ -1117,28 +2478,28 @@
+@@ -1117,28 +2468,28 @@
  
              try
              {
@@ -1939,7 +1924,7 @@
                      }
  
                      return;
-@@ -1174,9 +2535,12 @@
+@@ -1174,9 +2525,12 @@
                          ((ContainerMerchant)container).setCurrentRecipeIndex(i);
                      }
                  }
@@ -1953,7 +1938,7 @@
                  }
              }
              else if ("MC|AdvCdm".equals(p_147349_1_.func_149559_c()))
-@@ -1222,9 +2586,12 @@
+@@ -1222,9 +2576,12 @@
                              this.playerEntity.addChatMessage(new ChatComponentTranslation("advMode.setCommand.success", new Object[] {s1}));
                          }
                      }
@@ -1968,7 +1953,7 @@
                      }
                      finally
                      {
-@@ -1257,9 +2624,12 @@
+@@ -1257,9 +2614,12 @@
                              tileentitybeacon.markDirty();
                          }
                      }
@@ -1983,7 +1968,7 @@
                      }
                  }
              }
-@@ -1281,6 +2651,13 @@
+@@ -1281,6 +2641,13 @@
                      containerrepair.updateItemName("");
                  }
              }
@@ -1997,7 +1982,7 @@
          }
      }
  
-@@ -1292,6 +2669,21 @@
+@@ -1292,6 +2659,21 @@
          }
      }
  
