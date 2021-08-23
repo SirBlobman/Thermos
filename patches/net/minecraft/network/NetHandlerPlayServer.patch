@@ -24,7 +24,7 @@
  import net.minecraft.network.play.server.S23PacketBlockChange;
  import net.minecraft.network.play.server.S2FPacketSetSlot;
  import net.minecraft.network.play.server.S32PacketConfirmTransaction;
-@@ -81,19 +84,75 @@
+@@ -81,18 +84,74 @@
  import net.minecraft.util.IChatComponent;
  import net.minecraft.util.IntHashMap;
  import net.minecraft.util.ReportedException;
@@ -42,7 +42,7 @@
  import net.minecraftforge.event.ServerChatEvent;
  import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 -import net.minecraftforge.event.entity.player.PlayerInteractEvent.Action;
- 
++
 +// CraftBukkit start
 +import java.io.UnsupportedEncodingException;
 +import java.util.concurrent.ExecutionException;
@@ -98,10 +98,9 @@
 +import org.bukkit.craftbukkit.CraftServer;
 +import org.bukkit.event.inventory.InventoryType;
 +// Cauldron end
-+
+ 
  public class NetHandlerPlayServer implements INetHandlerPlayServer
  {
-     private static final Logger logger = LogManager.getLogger();
 @@ -107,13 +166,12 @@
      private long field_147379_i;
      private static Random field_147376_j = new Random();
@@ -246,7 +245,7 @@
 +
 +            // If the packet contains movement information then we update the To location with the correct XYZ.
 +            if (p_147347_1_.field_149480_h && !(p_147347_1_.field_149480_h && p_147347_1_.field_149477_b == -999.0D && p_147347_1_.field_149475_d == -999.0D))
-             {
++            {
 +                to.setX(p_147347_1_.field_149479_a);
 +                to.setY(p_147347_1_.field_149477_b);
 +                to.setZ(p_147347_1_.field_149478_c);
@@ -306,7 +305,7 @@
 +            }
 +
 +            if (this.hasMoved && !this.playerEntity.isDead)
-+            {
+             {
 +                // CraftBukkit end
                  double d1;
                  double d2;
@@ -550,7 +549,7 @@
              {
                  this.sendPacket(new S2FPacketSetSlot(this.playerEntity.openContainer.windowId, slot.slotNumber, this.playerEntity.inventory.getCurrentItem()));
              }
-@@ -624,14 +930,34 @@
+@@ -624,13 +930,33 @@
  
      public void onDisconnect(IChatComponent p_147231_1_)
      {
@@ -580,16 +579,15 @@
          this.playerEntity.mountEntityAndWakeUp();
 -        this.serverController.getConfigurationManager().playerLoggedOut(this.playerEntity);
 +        String quitMessage = this.serverController.getConfigurationManager().disconnect(this.playerEntity);
- 
++
 +        if ((quitMessage != null) && (quitMessage.length() > 0))
 +        {
 +            this.serverController.getConfigurationManager().sendMessage(CraftChatMessage.fromString(quitMessage));
 +        }
 +        // CraftBukkit end
-+
+ 
          if (this.serverController.isSinglePlayer() && this.playerEntity.getCommandSenderName().equals(this.serverController.getServerOwner()))
          {
-             logger.info("Stopping singleplayer server as player logged out");
 @@ -657,6 +983,18 @@
              }
          }
@@ -705,13 +703,9 @@
              }
 -            else
 +            else if (s.isEmpty())
-             {
--                ChatComponentTranslation chatcomponenttranslation1 = new ChatComponentTranslation("chat.type.text", new Object[] {this.playerEntity.func_145748_c_(), ForgeHooks.newChatWithLinks(s)}); // Fixes chat links
--                chatcomponenttranslation1 = ForgeHooks.onServerChatEvent(this, s, chatcomponenttranslation1);
--                if (chatcomponenttranslation1 == null) return;
--                this.serverController.getConfigurationManager().sendChatMsgImpl(chatcomponenttranslation1, false);
++            {
 +                logger.warn(this.playerEntity.getCommandSenderName() + " tried to send an empty message");
-             }
++            }
 +            else if (getPlayerB().isConversing())
 +            {
 +                getPlayerB().acceptConversationInput(s);
@@ -734,8 +728,7 @@
 +            			if(str.charAt(0) != '@')
 +            				continue;
 +            			possibilities.add(str.substring(1));
- 
--            this.chatSpamThresholdCount += 20;
++
 +            		}
 +            	}
 +            	
@@ -756,13 +749,15 @@
 +                this.chat(s, true);
 +                // CraftBukkit end - the below is for reference. :)
 +            }
- 
--            if (this.chatSpamThresholdCount > 200 && !this.serverController.getConfigurationManager().func_152596_g(this.playerEntity.getGameProfile()))
++
 +            // CraftBukkit start - replaced with thread safe throttle
 +            // this.chatSpamThresholdCount += 20;
 +            if (chatSpamField.addAndGet(this, 20) > 200 && !this.serverController.getConfigurationManager().func_152596_g(this.playerEntity.getGameProfile()))
              {
--                this.kickPlayerFromServer("disconnect.spam");
+-                ChatComponentTranslation chatcomponenttranslation1 = new ChatComponentTranslation("chat.type.text", new Object[] {this.playerEntity.func_145748_c_(), ForgeHooks.newChatWithLinks(s)}); // Fixes chat links
+-                chatcomponenttranslation1 = ForgeHooks.onServerChatEvent(this, s, chatcomponenttranslation1);
+-                if (chatcomponenttranslation1 == null) return;
+-                this.serverController.getConfigurationManager().sendChatMsgImpl(chatcomponenttranslation1, false);
 +                if (p_147354_1_.hasPriority())
 +                {
 +                    Waitable waitable = new Waitable() {
@@ -795,9 +790,10 @@
 +
 +                // CraftBukkit end
              }
-         }
-     }
++        }
++    }
  
+-            this.chatSpamThresholdCount += 20;
 +    // CraftBukkit start
 +    public void chat(String s, boolean async)
 +    {
@@ -805,7 +801,8 @@
 +        {
 +            return;
 +        }
-+
+ 
+-            if (this.chatSpamThresholdCount > 200 && !this.serverController.getConfigurationManager().func_152596_g(this.playerEntity.getGameProfile()))
 +        if (!async && s.startsWith("/"))
 +        {
 +            this.handleSlashCommand(s);
@@ -823,7 +820,8 @@
 +
 +            if (chatcomponenttranslation1 != null
 +                    && chatcomponenttranslation1.getFormatArgs()[chatcomponenttranslation1.getFormatArgs().length - 1] instanceof String)
-+            {
+             {
+-                this.kickPlayerFromServer("disconnect.spam");
 +                // use event message from Forge
 +                s = (String) chatcomponenttranslation1.getFormatArgs()[chatcomponenttranslation1.getFormatArgs().length - 1];
 +            }
@@ -917,11 +915,11 @@
 +                        recipient.sendMessage(s);
 +                    }
 +                }
-+            }
-+        }
-+    }
+             }
+         }
+     }
 +    // CraftBukkit end
-+
+ 
      private void handleSlashCommand(String p_147361_1_)
      {
 -        this.serverController.getCommandManager().executeCommand(this.playerEntity, p_147361_1_);
@@ -1190,12 +1188,10 @@
                  }
              }
          }
-@@ -828,14 +1625,26 @@
-     {
+@@ -829,12 +1626,24 @@
          this.playerEntity.func_143004_u();
          C16PacketClientStatus.EnumState enumstate = p_147342_1_.func_149435_c();
--
-+        
+         
 +        final boolean isDead = this.playerEntity.getHealth() <= 0.0F;
          switch (NetHandlerPlayServer.SwitchEnumState.field_151290_a[enumstate.ordinal()])
          {
@@ -1208,17 +1204,16 @@
 +                {
 +                    // We really should be calling transferPlayerToDimension since the player is coming in contact with a portal.
 +                    this.serverController.getConfigurationManager().respawnPlayer(this.playerEntity, 0, true, null, isDead); // set flag to indicate player is leaving end.
-                 }
++                }
 +                else
 +                // not coming from end
 +                {
 +                	this.playerEntity = this.serverController.getConfigurationManager().respawnPlayer(this.playerEntity, 0, false, null, isDead);
 +                }
 +                // Cauldron end
-+                }
+                 }
                  else if (this.playerEntity.getServerForPlayer().getWorldInfo().isHardcoreModeEnabled())
                  {
-                     if (this.serverController.isSinglePlayer() && this.playerEntity.getCommandSenderName().equals(this.serverController.getServerOwner()))
 @@ -857,7 +1666,7 @@
                          return;
                      }
@@ -1228,7 +1223,7 @@
                  }
  
                  break;
-@@ -871,17 +1680,461 @@
+@@ -871,16 +1680,460 @@
  
      public void processCloseWindow(C0DPacketCloseWindow p_147356_1_)
      {
@@ -1270,7 +1265,7 @@
 +            {
 +                return;
 +            }
- 
++
 +            InventoryView inventory = this.playerEntity.openContainer.getBukkitView();
 +            SlotType type = CraftInventoryView.getSlotType(inventory, p_147351_1_.func_149544_d());
 +            InventoryClickEvent event = null;
@@ -1687,10 +1682,9 @@
 +                }
 +            }
 +            // CraftBukkit end
-+
+ 
              if (ItemStack.areItemStacksEqual(p_147351_1_.func_149546_g(), itemstack))
              {
-                 this.playerEntity.playerNetServerHandler.sendPacket(new S32PacketConfirmTransaction(p_147351_1_.func_149548_c(), p_147351_1_.func_149547_f(), true));
 @@ -903,6 +2156,12 @@
                  }
  
@@ -1704,7 +1698,7 @@
              }
          }
      }
-@@ -925,9 +2184,61 @@
+@@ -925,8 +2184,60 @@
              boolean flag = p_147344_1_.func_149627_c() < 0;
              ItemStack itemstack = p_147344_1_.func_149625_d();
              boolean flag1 = p_147344_1_.func_149627_c() >= 1 && p_147344_1_.func_149627_c() < 36 + InventoryPlayer.getHotbarSize();
@@ -1721,7 +1715,7 @@
 +                InventoryView inventory = new CraftInventoryView(player, player.getInventory(), this.playerEntity.inventoryContainer);
 +                org.bukkit.inventory.ItemStack item = CraftItemStack.asBukkitCopy(p_147344_1_.func_149625_d()); // Should be packet107setcreativeslot.newitem
 +                SlotType type = SlotType.QUICKBAR;
- 
++
 +                if (flag)
 +                {
 +                    type = SlotType.OUTSIDE;
@@ -1763,10 +1757,9 @@
 +                }
 +            }
 +            // CraftBukkit end
-+
+ 
              if (flag1 && flag2 && flag3)
              {
-                 if (itemstack == null)
 @@ -956,6 +2267,11 @@
  
      public void processConfirmTransaction(C0FPacketConfirmTransaction p_147339_1_)
@@ -1874,129 +1867,79 @@
  
          if ("MC|BEdit".equals(p_147349_1_.func_149559_c()))
          {
-@@ -1075,34 +2436,50 @@
+@@ -1075,25 +2436,25 @@
  
              try
              {
 -                itemstack = packetbuffer.readItemStackFromBuffer();
-+                push = packetbuffer.readItemStackFromBuffer();
- 
--                if (itemstack == null)
-+                if (push == null)
-                 {
-                     return;
-                 }
- 
--                if (!ItemWritableBook.func_150930_a(itemstack.getTagCompound()))
-+                if (!ItemWritableBook.func_150930_a(push.getTagCompound()))
-                 {
-                     throw new IOException("Invalid book tag!");
-                 }
- 
--                itemstack1 = this.playerEntity.inventory.getCurrentItem();
-+                stack = this.playerEntity.inventory.getCurrentItem();
- 
--                if (itemstack1 != null)
-+                if (stack != null)
-                 {
--                    if (itemstack.getItem() == Items.writable_book && itemstack.getItem() == itemstack1.getItem())
-+                    if (push.getItem() == Items.writable_book && push.getItem() == stack.getItem() && push.getEnchantmentTagList().equals(stack.getEnchantmentTagList()))
-                     {
--                        itemstack1.setTagInfo("pages", itemstack.getTagCompound().getTagList("pages", 8));
-+                        nouveau = stack.copy();
-+                        ItemWritableBook.shadowUpdate(nouveau, push, false);
-+                        CraftEventFactory.handleEditBookEvent(playerEntity, nouveau); // CraftBukkit
-+                        this.playerEntity.inventory.setInventorySlotContents(this.playerEntity.inventory.currentItem, nouveau);
-                     }
-+                    else
-+                    {
-+                        throw new RuntimeException("Bogey book-user! Stop using AllUWant");
-+                    }
- 
-                     return;
-                 }
-             }
--            catch (Exception exception4)
-+            // CraftBukkit start
-+            catch (Throwable throwable)
-             {
--                logger.error("Couldn\'t handle book info", exception4);
--                return;
-+                logger.error("Couldn\'t handle book info", throwable);
-+                if (throwable instanceof RuntimeException && !(throwable instanceof IOException))
-+                {
-+                    this.kickPlayerFromServer(throwable.getMessage());
-+                }
-+                else
-+                {
-+                    this.kickPlayerFromServer("Invalid book data!");
-+                }
-+                // CraftBukkit end
-             }
-             finally
-             {
-@@ -1117,37 +2494,47 @@
- 
-             try
-             {
--                itemstack = packetbuffer.readItemStackFromBuffer();
-+                push = packetbuffer.readItemStackFromBuffer();
++                stack = packetbuffer.readItemStackFromBuffer();
  
 -                if (itemstack != null)
-+                if (push != null)
++                if (stack != null)
                  {
--                    if (!ItemEditableBook.validBookTagContents(itemstack.getTagCompound()))
-+                    if (!ItemEditableBook.validBookTagContents(push.getTagCompound()))
+-                    if (!ItemWritableBook.func_150930_a(itemstack.getTagCompound()))
++                    if (!ItemWritableBook.func_150930_a(stack.getTagCompound()))
                      {
                          throw new IOException("Invalid book tag!");
                      }
  
 -                    itemstack1 = this.playerEntity.inventory.getCurrentItem();
-+                    stack = this.playerEntity.inventory.getCurrentItem();
++                    nouveau = this.playerEntity.inventory.getCurrentItem();
  
 -                    if (itemstack1 == null)
-+                    if (stack == null)
++                    if (nouveau == null)
                      {
                          return;
                      }
  
+-                    if (itemstack.getItem() == Items.writable_book && itemstack.getItem() == itemstack1.getItem())
++                    if (stack.getItem() == Items.writable_book && stack.getItem() == nouveau.getItem())
+                     {
+-                        itemstack1.setTagInfo("pages", itemstack.getTagCompound().getTagList("pages", 8));
++                        nouveau.setTagInfo("pages", stack.getTagCompound().getTagList("pages", 8));
+                     }
+ 
+                     return;
+@@ -1117,28 +2478,28 @@
+ 
+             try
+             {
+-                itemstack = packetbuffer.readItemStackFromBuffer();
++                stack = packetbuffer.readItemStackFromBuffer();
+ 
+-                if (itemstack == null)
++                if (stack == null)
+                 {
+                     return;
+                 }
+ 
+-                if (!ItemEditableBook.validBookTagContents(itemstack.getTagCompound()))
++                if (!ItemEditableBook.validBookTagContents(stack.getTagCompound()))
+                 {
+                     throw new IOException("Invalid book tag!");
+                 }
+ 
+-                itemstack1 = this.playerEntity.inventory.getCurrentItem();
++                nouveau = this.playerEntity.inventory.getCurrentItem();
+ 
+-                if (itemstack1 != null)
++                if (nouveau != null)
+                 {
 -                    if (itemstack.getItem() == Items.written_book && itemstack1.getItem() == Items.writable_book)
-+                    if (push.getItem() == Items.written_book && stack.getItem() == Items.writable_book)
++                    if (stack.getItem() == Items.written_book && nouveau.getItem() == Items.writable_book)
                      {
 -                        itemstack1.setTagInfo("author", new NBTTagString(this.playerEntity.getCommandSenderName()));
 -                        itemstack1.setTagInfo("title", new NBTTagString(itemstack.getTagCompound().getString("title")));
 -                        itemstack1.setTagInfo("pages", itemstack.getTagCompound().getTagList("pages", 8));
 -                        itemstack1.func_150996_a(Items.written_book);
-+                        nouveau = stack.copy();
 +                        nouveau.setTagInfo("author", new NBTTagString(this.playerEntity.getCommandSenderName()));
-+                        ItemWritableBook.shadowUpdate(nouveau, push, true);
-+                        CraftEventFactory.handleEditBookEvent(playerEntity, nouveau); // CraftBukkit
-+                        this.playerEntity.inventory.setInventorySlotContents(this.playerEntity.inventory.currentItem, nouveau);
++                        nouveau.setTagInfo("title", new NBTTagString(stack.getTagCompound().getString("title")));
++                        nouveau.setTagInfo("pages", stack.getTagCompound().getTagList("pages", 8));
++                        nouveau.func_150996_a(Items.written_book);
                      }
  
                      return;
-                 }
-             }
--            catch (Exception exception3)
-+            // CraftBukkit start
-+            catch (Throwable throwable)
-             {
--                logger.error("Couldn\'t sign book", exception3);
--                return;
-+                logger.error("Couldn\'t sign book", throwable);
-+                if (throwable instanceof RuntimeException && !(throwable instanceof IOException))
-+                {
-+                    this.kickPlayerFromServer(throwable.getMessage());
-+                }
-+                else
-+                {
-+                    this.kickPlayerFromServer("Invalid book data!");
-+                }
-+                // CraftBukkit end
-             }
-             finally
-             {
-@@ -1174,9 +2561,12 @@
+@@ -1174,9 +2535,12 @@
                          ((ContainerMerchant)container).setCurrentRecipeIndex(i);
                      }
                  }
@@ -2010,7 +1953,7 @@
                  }
              }
              else if ("MC|AdvCdm".equals(p_147349_1_.func_149559_c()))
-@@ -1222,9 +2612,12 @@
+@@ -1222,9 +2586,12 @@
                              this.playerEntity.addChatMessage(new ChatComponentTranslation("advMode.setCommand.success", new Object[] {s1}));
                          }
                      }
@@ -2025,7 +1968,7 @@
                      }
                      finally
                      {
-@@ -1257,9 +2650,12 @@
+@@ -1257,9 +2624,12 @@
                              tileentitybeacon.markDirty();
                          }
                      }
@@ -2040,7 +1983,7 @@
                      }
                  }
              }
-@@ -1281,6 +2677,13 @@
+@@ -1281,6 +2651,13 @@
                      containerrepair.updateItemName("");
                  }
              }
@@ -2054,7 +1997,7 @@
          }
      }
  
-@@ -1292,6 +2695,21 @@
+@@ -1292,6 +2669,21 @@
          }
      }
  
