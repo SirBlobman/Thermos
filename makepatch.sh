@@ -22,7 +22,7 @@ then
 		touch $PATCH
 	fi
 	echo "Diff patch of ${redf}$CLEAN${reset} and ${gref}$CAULD${reset} below."
-	git diff --minimal --no-index --no-prefix $CLEAN $CAULD
+	git diff --no-index --no-prefix $CLEAN $CAULD
 elif [ $1 == "make" ]
 then
 	echo "${bluf}CREATING PATCH${reset}"
@@ -36,7 +36,7 @@ then
 		mkdir -p `java makepatch dir $FILE`
 		touch $PATCH
 	fi
-	git diff --minimal --no-prefix --no-index  $CLEAN $CAULD > $PATCH
+	git diff --no-prefix --no-index  $CLEAN $CAULD > $PATCH
 	java makepatch $PATCH
 	echo "Diff of ${redf}$CLEAN${reset} and ${gref}$CAULD${reset} written to ${yelf}$PATCH${reset}"
 else
@@ -51,7 +51,7 @@ else
 		mkdir -p `java makepatch dir $FILE`
 		touch $PATCH
 	fi
-	git diff --minimal --no-prefix --ignore-space-at-eol --ignore-blank-lines --no-index $CLEAN $CAULD > $PATCH
+	git diff --no-prefix --ignore-space-at-eol --ignore-blank-lines --no-index $CLEAN $CAULD > $PATCH
 	java makepatch $PATCH
 	echo "Diff of ${redf}$CLEAN${reset} and ${gref}$CAULD${reset} written to ${yelf}$PATCH${reset}"
 fi
