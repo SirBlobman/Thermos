@@ -37,7 +37,7 @@ class InstallBundle extends DefaultTask {
 
             it << '''Thermos installation guide
 
-# This is Thermos from https://github.com/TCPR/Thermos
+# This is Thermos from https://github.com/SirBlobman/Thermos
 
 # Installation and usage
 1. Unpack this zip into server directory
@@ -51,9 +51,6 @@ class InstallBundle extends DefaultTask {
   java -Xmx1024M -jar Thermos.jar
 
 3. Enjoy
-
-Public builds can be found at: https://tcpr.ca/downloads/thermos
-
 '''
         }
         def cp = bootstrapClasspath
