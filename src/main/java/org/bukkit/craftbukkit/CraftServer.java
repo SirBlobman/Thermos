@@ -25,6 +25,9 @@ import java.util.regex.Pattern;
 import javax.imageio.ImageIO;
 
 import com.google.common.base.Charsets;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufOutputStream;
 import io.netty.buffer.Unpooled;
@@ -160,7 +163,7 @@ public final class CraftServer implements Server {
     public YamlConfiguration configuration = MinecraftServer.configuration; // Cauldron
     private YamlConfiguration commandsConfiguration = MinecraftServer.commandsConfiguration; // Cauldron
     private final Yaml yaml = new Yaml(new SafeConstructor());
-    private final Map<UUID, OfflinePlayer> offlinePlayers = new MapMaker().softValues().makeMap();
+    private final Map<UUID, OfflinePlayer> offlinePlayers;
     private final AutoUpdater updater;
     private final EntityMetadataStore entityMetadata = new EntityMetadataStore();
     private final PlayerMetadataStore playerMetadata = new PlayerMetadataStore();
@@ -194,6 +197,9 @@ public final class CraftServer implements Server {
     }
 
     public CraftServer(net.minecraft.server.MinecraftServer console, net.minecraft.server.management.ServerConfigurationManager playerList) {
+        Cache<UUID, OfflinePlayer> cache = CacheBuilder.newBuilder().softValues().build();
+        this.offlinePlayers = cache.asMap();
+    	
         this.console = console;
         this.playerList = (net.minecraft.server.dedicated.DedicatedPlayerList) playerList;
         this.playerView = Collections.unmodifiableList(com.google.common.collect.Lists.transform(playerList.playerEntityList, new com.google.common.base.Function<EntityPlayerMP, CraftPlayer>() {
