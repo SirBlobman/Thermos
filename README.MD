@@ -12,13 +12,17 @@ Thermos is a fork of KCauldron, a craftbukkit forge server for Minecraft 1.7.10.
 After periods of inactivity on KCauldron's GitLab concerning major issues, Thermos was created to allow active members of the Minecraft coding community to optimize it and provide fixes in a timely manner.
 We hope to eliminate all issues with CraftBukkit Forge servers. In the end, we envision a seamless, low lag Thermos experience.
 
-Advantages over KCauldron:
+#### Advantages over KCauldron:
 + Lag-lowering optimizations
 + Better world protection (Forge stuff doesn't bypass Bukkit plugins!)
 + Many patches that KCauldron didn't get from Spigot
 + Dupe glitch fixes
 
-## Installation
+## Downloads
+You can download the pre-built packages from [here](https://jenkins.sirblobman.xyz/job/Cauldron/job/Thermos/).  
+P.S. **PLEASE** look at the changes list before downloading! :smile:
+
+## Installation Instructions
 1. Download the jar file and libraries ZIP from [here](https://jenkins.sirblobman.xyz/job/Cauldron/job/Thermos/).
 2. Delete the "bin" and "libraries" folders if they exist in your server folder.
 3. Extract the "libraries.zip" file into your server folder.
@@ -27,15 +31,11 @@ Advantages over KCauldron:
 java -XX:+UseG1GC -XX:+UseFastAccessorMethods -XX:+OptimizeStringConcat -XX:MetaspaceSize=1024m -XX:MaxMetaspaceSize=2048m -XX:+AggressiveOpts -XX:MaxGCPauseMillis=10 -XX:+UseStringDeduplication -Xms4G -Xmx6G -XX:hashCode=5 -Dfile.encoding=UTF-8 -jar "Thermos-1.7.10-1614-server.jar" --log-strip-color
 ```
 
-## Downloads
-You can download the pre-built packages from [here](https://jenkins.sirblobman.xyz/job/Cauldron/job/Thermos/).  
-P.S. **PLEASE** look at the changes list before downloading! :smile:
-
 ## Build Requirements
 * Java JDK 8 or higher
 * `JAVA_HOME` defined on your OS
 
-## Building CyberdyneCC/Thermos
+## Building Instructions
 1. Checkout Project: `git clone https://github.com/SirBlobman/Thermos.git`
 2. Setup Git Modules: `git submodule update --init --recursive`
 2. Setup Project: `./gradlew clean setupCauldron`
