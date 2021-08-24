@@ -11,4 +11,8 @@
 build
 .gradle
 
+# Mac OSX
 *.DS_Store
+
+# Other Files
+.patch
