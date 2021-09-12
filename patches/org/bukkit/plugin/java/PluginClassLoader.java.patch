@@ -24,7 +24,7 @@
  import java.io.File;
  import java.net.MalformedURLException;
  import java.net.URL;
-@@ -15,16 +33,40 @@
+@@ -15,15 +33,39 @@
  /**
   * A ClassLoader for plugins, to allow shared classes across multiple plugins
   */
@@ -45,7 +45,7 @@
 +    private RemapperProcessor remapperProcessor; // secondary; for inheritance & remapping reflection
 +    private boolean debug;            // classloader debugging
 +    private int remapFlags = -1;
- 
++
 +    private static ConcurrentMap<Integer,JarMapping> jarMappings = new ConcurrentHashMap<Integer, JarMapping>();
 +    private static final int F_GLOBAL_INHERIT   = 1 << 1;
 +    private static final int F_REMAP_OBCPRE     = 1 << 2;
@@ -64,10 +64,9 @@
 +    // This trick bypasses Maven Shade's package rewriting when using String literals [same trick in jline]
 +    private static final String org_bukkit_craftbukkit = new String(new char[] {'o','r','g','/','b','u','k','k','i','t','/','c','r','a','f','t','b','u','k','k','i','t'});
 +    // Cauldron end
-+
+ 
      PluginClassLoader(final JavaPluginLoader loader, final ClassLoader parent, final PluginDescriptionFile description, final File dataFolder, final File file) throws InvalidPluginException, MalformedURLException {
          super(new URL[] {file.toURI().toURL()}, parent);
-         Validate.notNull(loader, "Loader cannot be null");
 @@ -34,6 +76,113 @@
          this.dataFolder = dataFolder;
          this.file = file;
@@ -182,7 +181,7 @@
          try {
              Class<?> jarClass;
              try {
-@@ -58,34 +207,336 @@
+@@ -58,34 +207,339 @@
      }
  
      @Override
@@ -233,25 +232,21 @@
 +                    null, false);
 +            // resolve naming conflict in FML/CB
 +            jarMapping.methods.put("net/minecraft/server/"+obfVersion+"/PlayerConnection/getPlayer ()Lorg/bukkit/craftbukkit/entity/CraftPlayer;", "getPlayerB");
-         }
--        Class<?> result = classes.get(name);
++        }
 +        else
 +        {
 +            jarMapping.loadMappings(
 +                    new BufferedReader(new InputStreamReader(loader.getClass().getClassLoader().getResourceAsStream("mappings/"+obfVersion+"/cb2numpkg.srg"))),
 +                    new MavenShade(relocations),
 +                    null, false);
- 
--        if (result == null) {
--            if (checkGlobal) {
--                result = loader.getClassByName(name);
++
 +            if (obfVersion.equals("v1_7_R4")) {
 +                jarMapping.loadMappings(
 +                        new BufferedReader(new InputStreamReader(loader.getClass().getClassLoader().getResourceAsStream("mappings/"+obfVersion+"/obf2numpkg.srg"))),
 +                        null, // no version relocation for obf
 +                        null, false);
-             }
- 
++            }
++
 +            // resolve naming conflict in FML/CB
 +            jarMapping.methods.put("net/minecraft/server/"+obfVersion+"/PlayerConnection/getPlayer ()Lorg/bukkit/craftbukkit/"+getNativeVersion()+"/entity/CraftPlayer;", "getPlayerB");
 +        }
@@ -271,11 +266,11 @@
 +
 +        jarMapping = new JarMapping();
 +        try {
-+
 +            // Guava 10 is part of the Bukkit API, so plugins can use it, but FML includes Guava 15
 +            // To resolve this conflict, remap plugin usages to Guava 10 in a separate package
 +            // Most plugins should keep this enabled, unless they want a newer Guava
-+	    // Thermos force usage of guava17 for pex 1.23 and newer
++        	// Thermos force usage of guava17 for pex 1.23 and newer
++        	
 +        	if (this.description.getName().equals("PermissionsEx"))
 +        	{
 +        		String[] vn = this.description.getVersion().split(".");
@@ -319,7 +314,10 @@
 +        		{
 +        			jarMapping.packages.put("com/google/common", "guava10/com/google/common");
 +        		}
-+        	}        	
++        	}
++        	else if (this.description.getName().equals("ShopGUIPlus")) {
++        		jarMapping.packages.put("com/google/common", "guava21/com/google/common");
++        	}
 +        	else
 +        		jarMapping.packages.put("com/google/common", "guava10/com/google/common");
 +            jarMapping.packages.put(org_bukkit_craftbukkit + "/libs/com/google/gson", "com/google/gson"); // Handle Gson being in a "normal" place
@@ -408,9 +406,13 @@
 +        } catch (IOException ex) {
 +            ex.printStackTrace();
 +            throw new RuntimeException(ex);
-+        }
+         }
+-        Class<?> result = classes.get(name);
 +    }
-+
+ 
+-        if (result == null) {
+-            if (checkGlobal) {
+-                result = loader.getClassByName(name);
 +    Class<?> findClass(String name, boolean checkGlobal) throws ClassNotFoundException {
 +        // Cauldron start - remap any calls for classes with packaged nms version
 +        if (name.startsWith("net.minecraft."))
@@ -423,26 +425,26 @@
 +        if (name.startsWith("org.bukkit.")) {
 +            if (debug) {
 +                System.out.println("Unexpected plugin findClass on OBC/NMS: name="+name+", checkGlobal="+checkGlobal+"; returning not found");
-+            }
+             }
 +            throw new ClassNotFoundException(name);
 +        }
 +        // custom loader, if enabled, threadsafety
 +        synchronized (name.intern()) {
 +            Class<?> result = classes.get(name);
-+
+ 
              if (result == null) {
 -                result = super.findClass(name);
 +                if (checkGlobal) {
 +                    result = loader.getClassByName(name); // Don't warn on deprecation, but maintain overridability
 +                }
- 
++
 +                if (result == null) {
 +                    if (remapper == null) {
 +                        result = super.findClass(name);
 +                    } else {
 +                        result = remappedFindClass(name);
 +                    }
-+
+ 
 +                    if (result != null) {
 +                        loader.setClass(name, result);
 +                    }
@@ -459,12 +461,12 @@
  
 -            classes.put(name, result);
 +            return result;
-         }
++        }
 +        // Cauldron end
 +    }
 +    private Class<?> remappedFindClass(String name) throws ClassNotFoundException {
 +        Class<?> result = null;
- 
++
 +        try {
 +            // Load the resource to the name
 +            String path = name.replace('.', '/').concat(".class");
@@ -522,8 +524,8 @@
 +                t.printStackTrace();
 +            }
 +            throw new ClassNotFoundException("Failed to remap class "+name, t);
-+        }
-+
+         }
+ 
          return result;
      }
 +    // Cauldron end
