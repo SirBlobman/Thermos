@@ -1,6 +1,6 @@
 --- ../src-base/minecraft/org/bukkit/plugin/java/PluginClassLoader.java
 +++ ../src-work/minecraft/org/bukkit/plugin/java/PluginClassLoader.java
-@@ -1,5 +1,23 @@
+@@ -1,5 +1,24 @@
  package org.bukkit.plugin.java;
  
 +// Cauldron start
@@ -11,6 +11,7 @@
 +import net.md_5.specialsource.repo.*;
 +import net.minecraft.server.MinecraftServer;
 +import net.minecraftforge.cauldron.configuration.CauldronConfig;
++import scala.actors.threadpool.Arrays;
 +import net.minecraftforge.cauldron.CauldronUtils;
 +
 +import org.bukkit.plugin.PluginDescriptionFile;
@@ -24,7 +25,7 @@
  import java.io.File;
  import java.net.MalformedURLException;
  import java.net.URL;
-@@ -15,15 +33,39 @@
+@@ -15,15 +34,40 @@
  /**
   * A ClassLoader for plugins, to allow shared classes across multiple plugins
   */
@@ -59,6 +60,7 @@
 +    private static final int F_REMAP_OBC172     = 1 << 10;
 +    private static final int F_REMAP_OBC179     = 1 << 11;
 +    private static final int F_REMAP_OBC1710    = 1 << 12;
++    private static final int F_REMAP_CUSTOM    = 1 << 13;
 +    private static final int F_REMAP_NMSPRE_MASK= 0xffff0000;  // "unversioned" NMS plugin version
 +
 +    // This trick bypasses Maven Shade's package rewriting when using String literals [same trick in jline]
@@ -67,12 +69,11 @@
  
      PluginClassLoader(final JavaPluginLoader loader, final ClassLoader parent, final PluginDescriptionFile description, final File dataFolder, final File file) throws InvalidPluginException, MalformedURLException {
          super(new URL[] {file.toURI().toURL()}, parent);
-@@ -34,6 +76,115 @@
+@@ -34,6 +78,118 @@
          this.dataFolder = dataFolder;
          this.file = file;
  
 +        // Cauldron start
-+
 +        String pluginName = this.description.getName();
 +
 +        // configure default remapper settings
@@ -149,9 +150,13 @@
 +        if (remapOBC152) flags |= F_REMAP_OBC152;
 +        if (remapOBCPre) flags |= F_REMAP_OBCPRE;
 +        if (globalInherit) flags |= F_GLOBAL_INHERIT;
++        
++        java.util.List<String> customPluginList = java.util.Arrays.asList("ShopGUIPlus", "PermissionsEx", "BuycraftX");
++        if(customPluginList.contains(pluginName)) {
++        	flags |= F_REMAP_CUSTOM;
++        }
 +
 +        remapFlags = flags; // used in findClass0
-+        System.out.println("[Thermos] PluginClassLoader flags for '" + pluginName + "': " + flags);
 +        JarMapping jarMapping = getJarMapping(flags);
 +
 +        // Load inheritance map
@@ -183,7 +188,7 @@
          try {
              Class<?> jarClass;
              try {
-@@ -58,34 +209,339 @@
+@@ -58,34 +214,339 @@
      }
  
      @Override
@@ -251,8 +256,7 @@
 +
 +            // resolve naming conflict in FML/CB
 +            jarMapping.methods.put("net/minecraft/server/"+obfVersion+"/PlayerConnection/getPlayer ()Lorg/bukkit/craftbukkit/"+getNativeVersion()+"/entity/CraftPlayer;", "getPlayerB");
-         }
--        Class<?> result = classes.get(name);
++        }
 +        // remap bouncycastle to Forge's included copy, not the vanilla obfuscated copy (not in Cauldron), see #133
 +        //jarMapping.packages.put("net/minecraft/"+obfVersion+"/org/bouncycastle", "org/bouncycastle"); No longer needed
 +    }
@@ -337,14 +341,11 @@
 +            if ((flags & F_REMAP_NMS179) != 0) {
 +                loadNmsMappings(jarMapping, "v1_7_R3");
 +            }
- 
--        if (result == null) {
--            if (checkGlobal) {
--                result = loader.getClassByName(name);
++
 +            if ((flags & F_REMAP_NMS172) != 0) {
 +                loadNmsMappings(jarMapping, "v1_7_R1");
-             }
- 
++            }
++
 +            if ((flags & F_REMAP_NMS164) != 0) {
 +                loadNmsMappings(jarMapping, "v1_6_R3");
 +            }
@@ -412,9 +413,13 @@
 +        } catch (IOException ex) {
 +            ex.printStackTrace();
 +            throw new RuntimeException(ex);
-+        }
+         }
+-        Class<?> result = classes.get(name);
 +    }
-+
+ 
+-        if (result == null) {
+-            if (checkGlobal) {
+-                result = loader.getClassByName(name);
 +    Class<?> findClass(String name, boolean checkGlobal) throws ClassNotFoundException {
 +        // Cauldron start - remap any calls for classes with packaged nms version
 +        if (name.startsWith("net.minecraft."))
@@ -427,13 +432,13 @@
 +        if (name.startsWith("org.bukkit.")) {
 +            if (debug) {
 +                System.out.println("Unexpected plugin findClass on OBC/NMS: name="+name+", checkGlobal="+checkGlobal+"; returning not found");
-+            }
+             }
 +            throw new ClassNotFoundException(name);
 +        }
 +        // custom loader, if enabled, threadsafety
 +        synchronized (name.intern()) {
 +            Class<?> result = classes.get(name);
-+
+ 
              if (result == null) {
 -                result = super.findClass(name);
 +                if (checkGlobal) {
