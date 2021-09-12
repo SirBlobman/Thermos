@@ -1,6 +1,6 @@
 --- ../src-base/minecraft/org/bukkit/plugin/java/PluginClassLoader.java
 +++ ../src-work/minecraft/org/bukkit/plugin/java/PluginClassLoader.java
-@@ -1,5 +1,24 @@
+@@ -1,10 +1,30 @@
  package org.bukkit.plugin.java;
  
 +// Cauldron start
@@ -11,7 +11,6 @@
 +import net.md_5.specialsource.repo.*;
 +import net.minecraft.server.MinecraftServer;
 +import net.minecraftforge.cauldron.configuration.CauldronConfig;
-+import scala.actors.threadpool.Arrays;
 +import net.minecraftforge.cauldron.CauldronUtils;
 +
 +import org.bukkit.plugin.PluginDescriptionFile;
@@ -25,7 +24,14 @@
  import java.io.File;
  import java.net.MalformedURLException;
  import java.net.URL;
-@@ -15,15 +34,40 @@
+ import java.net.URLClassLoader;
+ import java.util.HashMap;
++import java.util.List;
++import java.util.Arrays;
+ import java.util.Map;
+ import java.util.Set;
+ 
+@@ -15,15 +35,40 @@
  /**
   * A ClassLoader for plugins, to allow shared classes across multiple plugins
   */
@@ -47,7 +53,8 @@
 +    private boolean debug;            // classloader debugging
 +    private int remapFlags = -1;
 +
-+    private static ConcurrentMap<Integer,JarMapping> jarMappings = new ConcurrentHashMap<Integer, JarMapping>();
++    private static Map<Integer, JarMapping> jarMappings = new ConcurrentHashMap<>();
++    private static Map<String, JarMapping> customJarMappings = new ConcurrentHashMap<>();
 +    private static final int F_GLOBAL_INHERIT   = 1 << 1;
 +    private static final int F_REMAP_OBCPRE     = 1 << 2;
 +    private static final int F_REMAP_NMS152     = 1 << 3;
@@ -60,7 +67,6 @@
 +    private static final int F_REMAP_OBC172     = 1 << 10;
 +    private static final int F_REMAP_OBC179     = 1 << 11;
 +    private static final int F_REMAP_OBC1710    = 1 << 12;
-+    private static final int F_REMAP_CUSTOM    = 1 << 13;
 +    private static final int F_REMAP_NMSPRE_MASK= 0xffff0000;  // "unversioned" NMS plugin version
 +
 +    // This trick bypasses Maven Shade's package rewriting when using String literals [same trick in jline]
@@ -69,7 +75,7 @@
  
      PluginClassLoader(final JavaPluginLoader loader, final ClassLoader parent, final PluginDescriptionFile description, final File dataFolder, final File file) throws InvalidPluginException, MalformedURLException {
          super(new URL[] {file.toURI().toURL()}, parent);
-@@ -34,6 +78,118 @@
+@@ -34,6 +79,124 @@
          this.dataFolder = dataFolder;
          this.file = file;
  
@@ -150,14 +156,20 @@
 +        if (remapOBC152) flags |= F_REMAP_OBC152;
 +        if (remapOBCPre) flags |= F_REMAP_OBCPRE;
 +        if (globalInherit) flags |= F_GLOBAL_INHERIT;
-+        
-+        java.util.List<String> customPluginList = java.util.Arrays.asList("ShopGUIPlus", "PermissionsEx", "BuycraftX");
-+        if(customPluginList.contains(pluginName)) {
-+        	flags |= F_REMAP_CUSTOM;
-+        }
 +
 +        remapFlags = flags; // used in findClass0
-+        JarMapping jarMapping = getJarMapping(flags);
++        if(debug) {
++        	System.out.println("Remap Flags for plugin '" + pluginName + "': " + Integer.toHexString(flags));
++        }
++        
++        List<String> customJarMapPlugins = Arrays.asList("ShopGUIPlus", "PermissionsEx", "BuycraftX");
++        
++        JarMapping jarMapping;
++        if(customJarMapPlugins.contains(pluginName)) {
++        	jarMapping = getCustomJarMapping(pluginName, flags);
++        } else {
++        	jarMapping = getJarMapping(flags);
++        }
 +
 +        // Load inheritance map
 +        if ((flags & F_GLOBAL_INHERIT) != 0) {
@@ -188,7 +200,7 @@
          try {
              Class<?> jarClass;
              try {
-@@ -58,34 +214,339 @@
+@@ -58,34 +221,361 @@
      }
  
      @Override
@@ -256,23 +268,21 @@
 +
 +            // resolve naming conflict in FML/CB
 +            jarMapping.methods.put("net/minecraft/server/"+obfVersion+"/PlayerConnection/getPlayer ()Lorg/bukkit/craftbukkit/"+getNativeVersion()+"/entity/CraftPlayer;", "getPlayerB");
-+        }
+         }
+-        Class<?> result = classes.get(name);
 +        // remap bouncycastle to Forge's included copy, not the vanilla obfuscated copy (not in Cauldron), see #133
 +        //jarMapping.packages.put("net/minecraft/"+obfVersion+"/org/bouncycastle", "org/bouncycastle"); No longer needed
 +    }
-+
-+    private JarMapping getJarMapping(int flags) {
-+        JarMapping jarMapping = jarMappings.get(flags);
-+
-+        if (jarMapping != null) {
-+            if (debug) {
-+                System.out.println("Mapping reused for "+Integer.toHexString(flags));
-+            }
-+            return jarMapping;
-+        }
-+
-+        jarMapping = new JarMapping();
-+        try {
++    
++    private JarMapping getCustomJarMapping(String pluginName, int flags) {
++    	JarMapping jarMapping = customJarMappings.get(pluginName);
++    	if(jarMapping != null) {
++    		return jarMapping;
++    	}
++    	
++    	jarMapping = createNewJarMapping(flags);
++    	
++    	try {
 +            // Guava 10 is part of the Bukkit API, so plugins can use it, but FML includes Guava 15
 +            // To resolve this conflict, remap plugin usages to Guava 10 in a separate package
 +            // Most plugins should keep this enabled, unless they want a newer Guava
@@ -325,8 +335,20 @@
 +        	else if (this.description.getName().equals("ShopGUIPlus")) {
 +        		jarMapping.packages.put("com/google/common", "guava21/com/google/common");
 +        	}
-+        	else
-+        		jarMapping.packages.put("com/google/common", "guava10/com/google/common");
++        	
++        	customJarMappings.put(pluginName, jarMapping);
++        	return jarMapping;
++    	} catch(Exception ex) {
++    		ex.printStackTrace();
++    		throw new RuntimeException(ex);
++    	}
++    }
++    
++    private JarMapping createNewJarMapping(int flags) {
++        JarMapping jarMapping = new JarMapping();
++        
++        try {
++        	jarMapping.packages.put("com/google/common", "guava10/com/google/common");
 +            jarMapping.packages.put(org_bukkit_craftbukkit + "/libs/com/google/gson", "com/google/gson"); // Handle Gson being in a "normal" place
 +            // Bukkit moves these packages to nms while we keep them in root so we must relocate them for plugins that rely on them
 +            jarMapping.packages.put("net/minecraft/util/io", "io");
@@ -341,11 +363,14 @@
 +            if ((flags & F_REMAP_NMS179) != 0) {
 +                loadNmsMappings(jarMapping, "v1_7_R3");
 +            }
-+
+ 
+-        if (result == null) {
+-            if (checkGlobal) {
+-                result = loader.getClassByName(name);
 +            if ((flags & F_REMAP_NMS172) != 0) {
 +                loadNmsMappings(jarMapping, "v1_7_R1");
-+            }
-+
+             }
+ 
 +            if ((flags & F_REMAP_NMS164) != 0) {
 +                loadNmsMappings(jarMapping, "v1_6_R3");
 +            }
@@ -407,19 +432,28 @@
 +            }
 +
 +            System.out.println("Mapping loaded "+jarMapping.packages.size()+" packages, "+jarMapping.classes.size()+" classes, "+jarMapping.fields.size()+" fields, "+jarMapping.methods.size()+" methods, flags "+Integer.toHexString(flags));
-+
-+            JarMapping currentJarMapping = jarMappings.putIfAbsent(flags, jarMapping);
-+            return currentJarMapping == null ? jarMapping : currentJarMapping;
++            return jarMapping;
 +        } catch (IOException ex) {
 +            ex.printStackTrace();
 +            throw new RuntimeException(ex);
-         }
--        Class<?> result = classes.get(name);
++        }
 +    }
- 
--        if (result == null) {
--            if (checkGlobal) {
--                result = loader.getClassByName(name);
++
++    private JarMapping getJarMapping(int flags) {
++        JarMapping jarMapping = jarMappings.get(flags);
++        if (jarMapping != null) {
++            if (debug) {
++                System.out.println("Mapping reused for "+Integer.toHexString(flags));
++            }
++            
++            return jarMapping;
++        }
++        
++        jarMapping = createNewJarMapping(flags);
++        jarMappings.put(flags, jarMapping);
++        return jarMapping;
++    }
++
 +    Class<?> findClass(String name, boolean checkGlobal) throws ClassNotFoundException {
 +        // Cauldron start - remap any calls for classes with packaged nms version
 +        if (name.startsWith("net.minecraft."))
@@ -432,26 +466,26 @@
 +        if (name.startsWith("org.bukkit.")) {
 +            if (debug) {
 +                System.out.println("Unexpected plugin findClass on OBC/NMS: name="+name+", checkGlobal="+checkGlobal+"; returning not found");
-             }
++            }
 +            throw new ClassNotFoundException(name);
 +        }
 +        // custom loader, if enabled, threadsafety
 +        synchronized (name.intern()) {
 +            Class<?> result = classes.get(name);
- 
++
              if (result == null) {
 -                result = super.findClass(name);
 +                if (checkGlobal) {
 +                    result = loader.getClassByName(name); // Don't warn on deprecation, but maintain overridability
 +                }
-+
+ 
 +                if (result == null) {
 +                    if (remapper == null) {
 +                        result = super.findClass(name);
 +                    } else {
 +                        result = remappedFindClass(name);
 +                    }
- 
++
 +                    if (result != null) {
 +                        loader.setClass(name, result);
 +                    }
